@@ -215,13 +215,34 @@
 
         if (data) {
             if (typeof data === 'object') {
-                logMessage += '\n' + JSON.stringify(data, null, 2);
+                try {
+                    logMessage += '\n' + JSON.stringify(data, null, 2);
+                } catch (e) {
+                    logMessage += '\n[Objeto não serializável]';
+                }
             } else {
                 logMessage += '\n' + data;
             }
         }
 
+        // Adicionar log ao elemento (ACRESCENTAR no início, não substituir)
         debugData.textContent = logMessage + '\n\n' + debugData.textContent;
+
+        // Limitar tamanho total para evitar problemas de desempenho
+        if (debugData.textContent.length > 100000) {
+            debugData.textContent = debugData.textContent.substring(0, 95000) +
+                '\n\n[...logs mais antigos truncados...]\n\n';
+        }
+
+        // Salvar automaticamente no localStorage para persistência
+        try {
+            localStorage.setItem('debugLogs', debugData.textContent);
+        } catch (e) {
+            console.error('Erro ao salvar logs:', e);
+        }
+
+        // Também registrar no console para facilitar depuração
+        console.log(logMessage);
     }
 
     // Carregar pessoas autorizadas da API
@@ -376,67 +397,72 @@
     }
 
     // Carregar logs recentes
-    async function loadRecentLogs() {
-        try {
-            logDebug('Carregando logs recentes...');
+   // Carregar logs recentes
+async function loadRecentLogs() {
+    try {
+        console.log('Carregando logs recentes...');
 
-            const response = await fetch("{{ route('access.recent-logs') }}");
-            if (!response.ok) {
-                throw new Error(`Erro HTTP: ${response.status}`);
-            }
+        // Mostrar indicador de carregamento
+        const recentLogsElement = document.getElementById('recentLogs');
+        recentLogsElement.innerHTML = '<p class="text-gray-500">Carregando registros de acesso...</p>';
 
-            const logs = await response.json();
-
-            // Limpar logs atuais
-            recentLogs.innerHTML = '';
-
-            if (logs.length === 0) {
-                recentLogs.innerHTML = '<p class="text-gray-500">Nenhum acesso registrado recentemente.</p>';
-                return;
-            }
-
-            logDebug(`${logs.length} logs recentes carregados`);
-
-            // Adicionar cada log
-            logs.forEach(log => {
-                const statusColor = log.status === 'authorized' ? 'bg-green-100 text-green-800' :
-                                  (log.status === 'unauthorized' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800');
-
-                const statusText = log.status === 'authorized' ? 'Autorizado' :
-                                 (log.status === 'unauthorized' ? 'Não Autorizado' : 'Desconhecido');
-
-                const logItem = document.createElement('div');
-                logItem.className = 'flex items-center p-3 bg-gray-50 rounded-lg';
-
-                // Formatação da data
-                const accessTime = new Date(log.access_time);
-                const formattedTime = `${accessTime.toLocaleDateString('pt-BR')} ${accessTime.toLocaleTimeString('pt-BR')}`;
-
-                logItem.innerHTML = `
-                    <div class="flex-shrink-0 w-10 h-10 mr-3">
-                        ${log.photo_path ?
-                          `<img src="{{ asset('storage') }}/${log.photo_path}" class="object-cover w-10 h-10 rounded-full">` :
-                          '<div class="flex items-center justify-center w-10 h-10 bg-gray-300 rounded-full"><span class="text-gray-500">?</span></div>'}
-                    </div>
-                    <div class="flex-1">
-                        <div class="text-sm font-medium">${log.person_name || (log.authorized_person ? log.authorized_person.name : 'Desconhecido')}</div>
-                        <div class="flex items-center">
-                            <span class="inline-flex px-2 text-xs font-semibold leading-5 rounded-full ${statusColor}">
-                                ${statusText}
-                            </span>
-                            <span class="ml-2 text-xs text-gray-500">${formattedTime}</span>
-                        </div>
-                    </div>
-                `;
-
-                recentLogs.appendChild(logItem);
-            });
-        } catch (error) {
-            console.error('Erro ao carregar logs recentes:', error);
-            logDebug('Erro ao carregar logs recentes', error.message);
-            recentLogs.innerHTML = '<p class="text-red-500">Erro ao carregar logs recentes.</p>';
+        const response = await fetch("/access/recent-logs");
+        if (!response.ok) {
+            throw new Error(`Erro HTTP: ${response.status}`);
         }
+
+        const logs = await response.json();
+        console.log(`${logs.length} logs recentes carregados`);
+
+        // Limpar indicador e preparar para exibir logs
+        recentLogsElement.innerHTML = '';
+
+        if (logs.length === 0) {
+            recentLogsElement.innerHTML = '<p class="text-gray-500">Nenhum acesso registrado recentemente.</p>';
+            return;
+        }
+
+        // Adicionar cada log
+        logs.forEach(log => {
+            const statusColor = log.status === 'authorized' ? 'bg-green-100 text-green-800' :
+                              (log.status === 'unauthorized' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800');
+
+            const statusText = log.status === 'authorized' ? 'Autorizado' :
+                             (log.status === 'unauthorized' ? 'Não Autorizado' : 'Desconhecido');
+
+            const logItem = document.createElement('div');
+            logItem.className = 'flex items-center p-3 mb-2 bg-gray-50 rounded-lg';
+
+            // Formatação da data
+            const accessTime = new Date(log.access_time);
+            const formattedTime = `${accessTime.toLocaleDateString('pt-BR')} ${accessTime.toLocaleTimeString('pt-BR')}`;
+
+            // Construir o HTML com os dados do log
+            logItem.innerHTML = `
+                <div class="flex-shrink-0 w-10 h-10 mr-3">
+                    ${log.photo_path ?
+                      `<img src="/storage/${log.photo_path}" class="object-cover w-10 h-10 rounded-full">` :
+                      '<div class="flex items-center justify-center w-10 h-10 bg-gray-300 rounded-full"><span class="text-gray-500">?</span></div>'}
+                </div>
+                <div class="flex-1">
+                    <div class="text-sm font-medium">${log.person_name || (log.authorized_person ? log.authorized_person.name : 'Desconhecido')}</div>
+                    <div class="flex items-center">
+                        <span class="inline-flex px-2 text-xs font-semibold leading-5 rounded-full ${statusColor}">
+                            ${statusText}
+                        </span>
+                        <span class="ml-2 text-xs text-gray-500">${formattedTime}</span>
+                    </div>
+                </div>
+            `;
+
+            recentLogsElement.appendChild(logItem);
+        });
+    } catch (error) {
+        console.error('Erro ao carregar logs recentes:', error);
+        document.getElementById('recentLogs').innerHTML = '<p class="text-red-500">Erro ao carregar logs recentes.</p>';
     }
+}
+
 
     // Mostrar alerta
     function showAlert(type, title, message) {
@@ -488,56 +514,49 @@
     }
 
     // Registrar acesso
-    async function recordAccess(personId, personName, status, imageData) {
-        // Verificar se o intervalo mínimo entre registros foi atingido
+  // Função para registrar acesso no banco de dados
+async function recordAccess(personId, personName, status, imageData) {
+    try {
+        // Verificar se já foi detectada recentemente para evitar múltiplos registros
         const now = Date.now();
         if (now - lastDetectionTime < faceDetectionInterval) {
-            logDebug('Intervalo mínimo entre detecções não atingido');
+            console.log('Intervalo mínimo entre detecções não atingido, ignorando registro');
             return;
         }
-
         lastDetectionTime = now;
 
-        try {
-            logDebug(`Registrando acesso: ${status} para ID ${personId || 'N/A'}`);
+        console.log(`Registrando acesso: Status=${status}, ID=${personId || 'N/A'}, Nome=${personName || 'N/A'}`);
 
-            // Criar dados de acesso
-            const formData = new FormData();
-            formData.append('status', status);
+        // Preparar dados do formulário
+        const formData = new FormData();
+        formData.append('authorized_person_id', personId || '');
+        formData.append('person_name', personName || '');
+        formData.append('status', status);
+        formData.append('photo_data', imageData);
+        formData.append('_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
 
-            if (personId) {
-                formData.append('person_id', personId);
-            }
+        // Enviar para API
+        const response = await fetch("/access/record", {
+            method: 'POST',
+            body: formData
+        });
 
-            if (personName) {
-                formData.append('person_name', personName);
-            }
-
-            // Converter dataURL para Blob
-            if (imageData) {
-                const blob = await (async () => {
-                    const res = await fetch(imageData);
-                    return res.blob();
-                })();
-                formData.append('photo', blob, 'detection.png');
-            }
-
-            // Enviar para API
-            await fetch("{{ route('access.record') }}", {
-                method: 'POST',
-                body: formData
-            });
-
-            logDebug('Acesso registrado com sucesso');
-
-            // Recarregar logs após o registro
+        // Verificar resposta
+        if (response.ok) {
+            console.log('Acesso registrado com sucesso');
+            // Recarregar logs recentes
             loadRecentLogs();
-        } catch (error) {
-            console.error('Erro ao registrar acesso:', error);
-            logDebug('Erro ao registrar acesso', error.message);
+            return true;
+        } else {
+            const errorText = await response.text();
+            console.error(`Erro na resposta do servidor: ${response.status} - ${errorText}`);
+            return false;
         }
+    } catch (error) {
+        console.error('Erro ao registrar acesso:', error);
+        return false;
     }
-
+}
     // Mostrar notificação
     function showNotification(message, imageData, type) {
         if (Notification.permission === 'granted') {
